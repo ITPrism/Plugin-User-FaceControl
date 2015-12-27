@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension version="3.4" type="plugin" group="user" method="upgrade">
+    <name>PLG_USER_FACECONTROL</name>
+    <author>Todor Iliev</author>
+    <copyright>Copyright (C) 2016 Todor Iliev ( ITPrism.com ). All rights reserved.</copyright>
+    <license>http://www.gnu.org/licenses/gpl-3.0.en.html GNU/GPLv3</license>
+    <authorEmail>todor@itprism.com</authorEmail>
+    <authorUrl>http://itprism.com</authorUrl>
+    <version>1.0</version>
+    <creationDate>26 December, 2015</creationDate>
+    <description><![CDATA[
+    <p>User - Face Control is a plug-in that provides additional protection, during the process of login, on your website.</p>
+    <p><a href="http://itprism.com/" target="_blank">Subscribe for the newsletter</a> to receive information about updates and new ITPrism extensions.</p>
+    ]]>
+	</description>
+    
+    <files>
+        <filename plugin="facecontrol">facecontrol.php</filename>
+        <folder>language</folder>
+    </files>
+
+    <config>
+        <fields name="params">
+            <fieldset name="basic">
+                <field name="ip" type="textarea" default="" label="PLG_USER_FACECONTROL_WHITE_LIST_IPS" description="PLG_USER_FACECONTROL_WHITE_LIST_IPS_DESC" />
+                <field name="send_email_login" type="radio" default="0" label="PLG_USER_FACECONTROL_SEND_TO_ADMINISTRATOR" description="PLG_USER_FACECONTROL_SEND_TO_ADMINISTRATOR_DESC" class="btn-group">
+                    <option value="0">JNO</option>
+                    <option value="1">JYES</option>
+                </field>
+                <field name="send_email_brute_force" type="radio" default="0" label="PLG_USER_FACECONTROL_SEND_BRUTE_FORCE" description="PLG_USER_FACECONTROL_SEND_BRUTE_FORCE_DESC" class="btn-group">
+                    <option value="0">JNO</option>
+                    <option value="1">JYES</option>
+                </field>
+                <field name="sender_id" type="user" default="" label="PLG_USER_FACECONTROL_MAIL_SENDER" description="PLG_USER_FACECONTROL_MAIL_SENDER_DESC" required="true" />
+                <field name="ban_period" type="text" default="7" label="PLG_USER_FACECONTROL_BAN_PERIOD" description="PLG_USER_FACECONTROL_BAN_PERIOD_DESC" />
+            </fieldset>
+        </fields>
+    </config>
+    
+</extension>
