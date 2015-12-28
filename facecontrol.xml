@@ -6,8 +6,8 @@
     <license>http://www.gnu.org/licenses/gpl-3.0.en.html GNU/GPLv3</license>
     <authorEmail>todor@itprism.com</authorEmail>
     <authorUrl>http://itprism.com</authorUrl>
-    <version>1.0</version>
-    <creationDate>26 December, 2015</creationDate>
+    <version>1.1</version>
+    <creationDate>28 December, 2015</creationDate>
     <description><![CDATA[
     <p>User - Face Control is a plug-in that provides additional protection, during the process of login, on your website.</p>
     <p><a href="http://itprism.com/" target="_blank">Subscribe for the newsletter</a> to receive information about updates and new ITPrism extensions.</p>
@@ -32,6 +32,7 @@
                     <option value="1">JYES</option>
                 </field>
                 <field name="sender_id" type="user" default="" label="PLG_USER_FACECONTROL_MAIL_SENDER" description="PLG_USER_FACECONTROL_MAIL_SENDER_DESC" required="true" />
+                <field name="allowed_failures" type="text" default="10" label="PLG_USER_FACECONTROL_LOGIN_FAILURES" description="PLG_USER_FACECONTROL_LOGIN_FAILURES_DESC" />
                 <field name="ban_period" type="text" default="7" label="PLG_USER_FACECONTROL_BAN_PERIOD" description="PLG_USER_FACECONTROL_BAN_PERIOD_DESC" />
             </fieldset>
         </fields>

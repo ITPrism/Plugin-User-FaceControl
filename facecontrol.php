@@ -24,7 +24,7 @@ class PlgUserFacecontrol extends JPlugin
      * @param   array $credentials
      * @param   array $options Array of extra options
      *
-     * @return  bool
+     * @return  null|bool
      */
     public function onUserBeforeAuthenticate($credentials, &$options)
     {
@@ -44,56 +44,21 @@ class PlgUserFacecontrol extends JPlugin
             return null;
         }
 
-        $ipAddressesFile = JPath::clean(__DIR__ . '/files/ip.txt');
+        $ipAddressesFile = JPath::clean(__DIR__ . '/files/ip.log');
         $content         = $this->getContent($ipAddressesFile);
 
         $isBruteForceAttack = false;
-        $isMailSent         = false;
         $ip                 = $this->getIp($app);
 
-        foreach ($content as $key => $userData) {
-            if (strcmp($userData['ip'], $ip) === 0 and ($userData['tries'] >= 10)) {
-                $today = new JDate;
-
-                $bannedTo = new JDate($userData['date']);
-                $bannedTo->add(new DateInterval('P' . (int)$this->params->get('ban_period', 7) . 'D'));
-
-                if ($today <= $bannedTo) {
-                    $isBruteForceAttack         = true;
-                    $isMailSent                 = (bool)$content[$key]['mail_sent'];
-                    $content[$key]['mail_sent'] = 1;
-                }
-
+        foreach ($content as $userData) {
+            if (strcmp($userData['ip'], $ip) === 0) {
+                $isBruteForceAttack = $this->isBruteForceAttack($userData);
                 break;
             }
         }
 
         if ($isBruteForceAttack) {
-            // Send notification mail to the administrator.
-            if ($this->params->get('send_email_brute_force', 0) and !$isMailSent) {
-                $this->loadLanguage();
-                $uri = JUri::getInstance();
-
-                $senderId = $this->params->get('sender_id');
-                $sender   = JFactory::getUser($senderId);
-                $subject  = JText::_('PLG_USER_FACECONTROL_BRUTE_FORCE_ATTACK_SUBJECT');
-                $body     = JText::sprintf('PLG_USER_FACECONTROL_BRUTE_FORCE_BODY_S', $ip, $uri->toString(array('scheme', 'host', 'port')));
-
-                $mailer = JFactory::getMailer();
-                $return = $mailer->sendMail($sender->get('email'), $sender->get('name'), $app->get('mailfrom'), $subject, $body);
-
-                // Check for an error.
-                if ($return !== true) {
-                    JLog::add(JText::sprintf('PLG_USER_FACECONTROL_MAIL_ERROR_S', $mailer->ErrorInfo));
-                }
-
-                // Write the content.
-                $buffer = json_encode($content);
-                JFile::write($ipAddressesFile, $buffer);
-            }
-
             $options['silent'] = true;
-
             return false;
         }
 
@@ -105,7 +70,7 @@ class PlgUserFacecontrol extends JPlugin
      *
      * @param   array $response
      *
-     * @return  bool
+     * @return  null|bool
      */
     public function onUserLoginFailure($response)
     {
@@ -125,9 +90,10 @@ class PlgUserFacecontrol extends JPlugin
             return;
         }
 
-        $ipAddressesFile = JPath::clean(__DIR__ . '/files/ip.txt');
+        $ipAddressesFile = JPath::clean(__DIR__ . '/files/ip.log');
         $content         = $this->getContent($ipAddressesFile);
 
+        $isBruteForceAttack = false;
         $recordExists = false;
         $ip           = $this->getIp($app);
 
@@ -137,14 +103,15 @@ class PlgUserFacecontrol extends JPlugin
         foreach ($content as $key => $userData) {
             if (strcmp($userData['ip'], $ip) === 0) {
                 if ($userData['date'] === $todayFormatted) {
-                    $content[$key]['tries']++;
-                } else { // Restart tries.
+                    $content[$key]['attempts']++;
+                } else { // Restart attempts.
                     $content[$key]['date']      = $todayFormatted;
-                    $content[$key]['tries']     = 1;
-                    $content[$key]['mail_sent'] = 0;
+                    $content[$key]['attempts']  = 1;
                 }
 
                 $recordExists = true;
+
+                $isBruteForceAttack = $this->isBruteForceAttack($content[$key]);
                 break;
             }
         }
@@ -153,12 +120,30 @@ class PlgUserFacecontrol extends JPlugin
             $content[] = array(
                 'ip'        => $ip,
                 'date'      => $todayFormatted,
-                'tries'     => 1,
-                'mail_sent' => 0
+                'attempts'  => 1
             );
         }
 
-        // Write the content.
+        // Send notification mail to the administrator.
+        if ($isBruteForceAttack and $this->params->get('send_email_brute_force', 0)) {
+            $this->loadLanguage();
+            $uri = JUri::getInstance();
+
+            $senderId = $this->params->get('sender_id');
+            $sender   = JFactory::getUser($senderId);
+            $subject  = JText::_('PLG_USER_FACECONTROL_BRUTE_FORCE_ATTACK_SUBJECT');
+            $body     = JText::sprintf('PLG_USER_FACECONTROL_BRUTE_FORCE_BODY_S', $ip, $uri->toString(array('scheme', 'host', 'port')));
+
+            $mailer = JFactory::getMailer();
+            $return = $mailer->sendMail($sender->get('email'), $sender->get('name'), $app->get('mailfrom'), $subject, $body);
+
+            // Check for an error.
+            if ($return !== true) {
+                JLog::add(JText::sprintf('PLG_USER_FACECONTROL_MAIL_ERROR_S', $mailer->ErrorInfo));
+            }
+        }
+
+        // Store the content.
         $buffer = json_encode($content);
         JFile::write($ipAddressesFile, $buffer);
     }
@@ -240,6 +225,22 @@ class PlgUserFacecontrol extends JPlugin
         $ip = long2ip(ip2long($ip));
 
         return $ip;
+    }
+
+    protected function isBruteForceAttack($userData)
+    {
+        if ((int)$userData['attempts'] >= (int)$this->params->get('allowed_failures', 10)) {
+            $today    = new JDate;
+
+            $bannedTo = new JDate($userData['date']);
+            $bannedTo->add(new DateInterval('P' . (int)$this->params->get('ban_period', 7) . 'D'));
+
+            if ($today <= $bannedTo) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function getContent($ipAddressesFile)
