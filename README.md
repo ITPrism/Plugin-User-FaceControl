@@ -1,6 +1,6 @@
 User - Face Control
 ==========================
-( Version 1.1 )
+( Version 1.2 )
 - - -
 
 This is Joomla! plugin that provides additional protection on the front-end of the website, during the process of login.
@@ -13,6 +13,11 @@ Features
 
 Changelog
 ---------
+
+###v1.2
+* Fixed the method _onUserAuthorisation_.
+* Removed the method _onUserBeforeAuthenticate_.
+
 
 ###v1.1
 * Added option for number of allowed login failures. If there are more than these login attempts, the system will treat it as an attack.

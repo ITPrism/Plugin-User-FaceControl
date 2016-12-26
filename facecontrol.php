@@ -10,6 +10,8 @@
 // No direct access
 defined('_JEXEC') or die;
 
+JLoader::registerNamespace('Prism', JPATH_LIBRARIES);
+
 /**
  * This plugin controls users login.
  *
@@ -18,57 +20,34 @@ defined('_JEXEC') or die;
  */
 class PlgUserFacecontrol extends JPlugin
 {
+    private $fileIpAddresses;
+    private $filesFolder;
+    
     /**
-     * This method will be executed before the user authentication.
+     * Constructor
      *
-     * @param   array $credentials
-     * @param   array $options Array of extra options
+     * @param   stdClass &$subject   The object to observe
+     * @param   array  $config     An optional associative array of configuration settings.
+     *                             Recognized key values include 'name', 'group', 'params', 'language'
+     *                             (this list is not meant to be comprehensive).
      *
-     * @return  null|bool
+     * @since   1.5
+     *
+     * @throws \UnexpectedValueException
      */
-    public function onUserBeforeAuthenticate($credentials, &$options)
-    {
-        $app = JFactory::getApplication();
-        /** @var $app JApplicationSite */
+    public function __construct(&$subject, $config = array()) {
+        parent::__construct($subject, $config);
 
-        if ($app->isAdmin()) {
-            return null;
-        }
-
-        $doc = JFactory::getDocument();
-        /**  @var $doc JDocumentHtml */
-
-        // Check document type
-        $docType = $doc->getType();
-        if (strcmp('html', $docType) !== 0) {
-            return null;
-        }
-
-        $ipAddressesFile = JPath::clean(__DIR__ . '/files/ip.log');
-        $content         = $this->getContent($ipAddressesFile);
-
-        $isBruteForceAttack = false;
-        $ip                 = $this->getIp($app);
-
-        foreach ($content as $userData) {
-            if (strcmp($userData['ip'], $ip) === 0) {
-                $isBruteForceAttack = $this->isBruteForceAttack($userData);
-                break;
-            }
-        }
-
-        if ($isBruteForceAttack) {
-            $options['silent'] = true;
-            return false;
-        }
-
-        return true;
+        $this->filesFolder      = JPath::clean(__DIR__ . '/files', '/');
+        $this->fileIpAddresses  = JPath::clean($this->filesFolder .'/ip.log', '/');
     }
 
     /**
-     * This method will be called if the login process fails
+     * This method will be called if the login process fails.
      *
      * @param   array $response
+     *
+     * @throws \UnexpectedValueException
      *
      * @return  null|bool
      */
@@ -78,7 +57,7 @@ class PlgUserFacecontrol extends JPlugin
         /** @var $app JApplicationSite */
 
         if ($app->isAdmin()) {
-            return;
+            return null;
         }
 
         $doc = JFactory::getDocument();
@@ -87,41 +66,42 @@ class PlgUserFacecontrol extends JPlugin
         // Check document type
         $docType = $doc->getType();
         if (strcmp('html', $docType) !== 0) {
-            return;
+            return null;
         }
 
-        $ipAddressesFile = JPath::clean(__DIR__ . '/files/ip.log');
-        $content         = $this->getContent($ipAddressesFile);
+        $content            = $this->getContent($this->fileIpAddresses);
 
         $isBruteForceAttack = false;
-        $recordExists = false;
-        $ip           = $this->getIp($app);
+        $recordExists       = false;
+        $ip                 = Prism\Utilities\NetworkHelper::getIpAddress();
 
-        $today          = new JDate();
-        $todayFormatted = $today->format('Y-m-d');
+        if ($ip !== '') {
+            $today          = new JDate();
+            $todayFormatted = $today->format('Y-m-d');
 
-        foreach ($content as $key => $userData) {
-            if (strcmp($userData['ip'], $ip) === 0) {
-                if ($userData['date'] === $todayFormatted) {
-                    $content[$key]['attempts']++;
-                } else { // Restart attempts.
-                    $content[$key]['date']      = $todayFormatted;
-                    $content[$key]['attempts']  = 1;
+            foreach ($content as $key => $userData) {
+                if (strcmp($userData['ip'], $ip) === 0) {
+                    if ($userData['date'] === $todayFormatted) {
+                        $content[$key]['attempts']++;
+                    } else { // Restart attempts.
+                        $content[$key]['date']     = $todayFormatted;
+                        $content[$key]['attempts'] = 1;
+                    }
+
+                    $recordExists = true;
+
+                    $isBruteForceAttack = $this->isBruteForceAttack($content[$key]);
+                    break;
                 }
-
-                $recordExists = true;
-
-                $isBruteForceAttack = $this->isBruteForceAttack($content[$key]);
-                break;
             }
-        }
 
-        if (!$recordExists) {
-            $content[] = array(
-                'ip'        => $ip,
-                'date'      => $todayFormatted,
-                'attempts'  => 1
-            );
+            if (!$recordExists) {
+                $content[] = array(
+                    'ip'       => $ip,
+                    'date'     => $todayFormatted,
+                    'attempts' => 1
+                );
+            }
         }
 
         // Send notification mail to the administrator.
@@ -134,8 +114,8 @@ class PlgUserFacecontrol extends JPlugin
             $subject  = JText::_('PLG_USER_FACECONTROL_BRUTE_FORCE_ATTACK_SUBJECT');
             $body     = JText::sprintf('PLG_USER_FACECONTROL_BRUTE_FORCE_BODY_S', $ip, $uri->toString(array('scheme', 'host', 'port')));
 
-            $mailer = JFactory::getMailer();
-            $return = $mailer->sendMail($sender->get('email'), $sender->get('name'), $app->get('mailfrom'), $subject, $body);
+            $mailer   = JFactory::getMailer();
+            $return   = $mailer->sendMail($sender->get('email'), $sender->get('name'), $app->get('mailfrom'), $subject, $body);
 
             // Check for an error.
             if ($return !== true) {
@@ -145,18 +125,18 @@ class PlgUserFacecontrol extends JPlugin
 
         // Store the content.
         $buffer = json_encode($content);
-        JFile::write($ipAddressesFile, $buffer);
+        JFile::write($this->fileIpAddresses, $buffer);
     }
 
     /**
      * This method should handle whenever you would like to authorize a user by additional criteria.
      *
-     * @param   stdClass $response
+     * @param   JAuthenticationResponse $user
      * @param   array    $options Array of extra options
      *
-     * @return  bool
+     * @return  null|JAuthenticationResponse
      */
-    public function onUserAuthorisation($response, &$options)
+    public function onUserAuthorisation($user, $options)
     {
         $app = JFactory::getApplication();
         /** @var $app JApplicationSite */
@@ -174,19 +154,13 @@ class PlgUserFacecontrol extends JPlugin
             return null;
         }
 
-        $whiteList = $this->params->get('ip');
-        $whiteList = preg_replace('/\s+/', '', $whiteList);
-        $whiteList = explode(',', $whiteList);
-
-        $whiteList = array_filter($whiteList, 'JString::trim');
-
-        $ip = $this->getIp($app);
+        // Check if the IP address exists in the "White List".
+        $whiteList  = $this->getWhiteList();
+        $ip         = Prism\Utilities\NetworkHelper::getIpAddress();
 
         if (count($whiteList) > 0 and !in_array($ip, $whiteList, true)) {
-            $response->status  = JAuthentication::STATUS_DENIED;
-            $options['silent'] = true;
-
-            return $response;
+            $user->status  = JAuthentication::STATUS_DENIED;
+            return $user;
         }
 
         // Send notification mail to the administrator,
@@ -198,7 +172,7 @@ class PlgUserFacecontrol extends JPlugin
             $senderId = $this->params->get('sender_id');
             $sender   = JFactory::getUser($senderId);
             $subject  = JText::_('PLG_USER_FACECONTROL_SUBJECT');
-            $body     = JText::sprintf('PLG_USER_FACECONTROL_BODY_S', $response->fullname, $uri->toString(array('scheme', 'host', 'port')));
+            $body     = JText::sprintf('PLG_USER_FACECONTROL_BODY_S', $user->fullname, $uri->toString(array('scheme', 'host', 'port')));
 
             $mailer = JFactory::getMailer();
             $return = $mailer->sendMail($sender->get('email'), $sender->get('name'), $app->get('mailfrom'), $subject, $body);
@@ -209,22 +183,7 @@ class PlgUserFacecontrol extends JPlugin
             }
         }
 
-        return $response;
-    }
-
-    protected function getIp($app)
-    {
-        if ($app->input->server->get('HTTP_CLIENT_IP')) {
-            $ip = $app->input->server->get('HTTP_CLIENT_IP');
-        } elseif ($app->input->server->get('HTTP_X_FORWARDED_FOR')) {
-            $ip = $app->input->server->get('HTTP_X_FORWARDED_FOR');
-        } else {
-            $ip = $app->input->server->get('REMOTE_ADDR');
-        }
-
-        $ip = long2ip(ip2long($ip));
-
-        return $ip;
+        return null;
     }
 
     protected function isBruteForceAttack($userData)
@@ -243,6 +202,12 @@ class PlgUserFacecontrol extends JPlugin
         return false;
     }
 
+    /**
+     * @param $ipAddressesFile
+     *
+     * @throws \UnexpectedValueException
+     * @return array
+     */
     protected function getContent($ipAddressesFile)
     {
         jimport('joomla.filesystem.file');
@@ -251,7 +216,7 @@ class PlgUserFacecontrol extends JPlugin
             $buffer = '';
             JFile::write($ipAddressesFile, $buffer);
 
-            $htaccessFile = JPath::clean(__DIR__ . '/files/.htaccess');
+            $htaccessFile = JPath::clean($this->filesFolder.'/.htaccess', '/');
             if (!JFile::exists($htaccessFile)) {
                 $buffer = 'Deny from all';
                 JFile::write($htaccessFile, $buffer);
@@ -262,14 +227,20 @@ class PlgUserFacecontrol extends JPlugin
         if (!$content) {
             $content = array();
         } else {
-            $content = json_decode($content, true);
-
-            // If the JSON is broken.
-            if (!$content) {
-                $content = array();
-            }
+            $content = (array)json_decode($content, true);
         }
 
         return $content;
+    }
+
+    protected function getWhiteList()
+    {
+        $whiteList = $this->params->get('ip');
+        $whiteList = preg_replace('/\s+/', '', $whiteList);
+        $whiteList = explode(',', $whiteList);
+
+        $whiteList = array_filter($whiteList, 'JString::trim');
+
+        return $whiteList;
     }
 }
